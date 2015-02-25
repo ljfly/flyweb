@@ -169,6 +169,8 @@ begin:
 			break;
 		else if(n == -1 && errno == EINTR)
 			continue;
+		else if(-1 == n && errno == EAGAIN)
+			break;
 		else if(n == -1 && errno == EWOULDBLOCK) {
 			perror("socket read timeout");
 			goto out;
