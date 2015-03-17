@@ -90,7 +90,6 @@ process* accept_sock(int listen_sock) {
                 hbuf, sizeof hbuf,
                 sbuf, sizeof sbuf,
                 NI_NUMERICHOST | NI_NUMERICSERV);
-    /* Make the incoming socket non-blocking and add it to the list of fds to monitor. */
     s = setNonblocking(infd);
     if (s == -1)
       abort();
@@ -515,9 +514,9 @@ static int create_and_bind(char *port) {
   int s, listen_sock;
 
   memset(&hints, 0, sizeof(addrinfo));
-  hints.ai_family = AF_UNSPEC;     /* Return IPv4 and IPv6 choices */
-  hints.ai_socktype = SOCK_STREAM; /* We want a TCP socket */
-  hints.ai_flags = AI_PASSIVE;     /* All interfaces */
+  hints.ai_family = AF_UNSPEC;    
+  hints.ai_socktype = SOCK_STREAM; /* TCP socket */
+  hints.ai_flags = AI_PASSIVE;  
 
   s = getaddrinfo(NULL, port, &hints, &result);
   if (s != 0) {
@@ -534,7 +533,6 @@ static int create_and_bind(char *port) {
 
     s = bind(listen_sock, rp->ai_addr, rp->ai_addrlen);
     if (s == 0) {
-      /* We managed to bind successfully! */
       break;
     }
 
@@ -620,8 +618,6 @@ int main(int argc, char *argv[]) {
     for (i = 0; i < n; i++) {
       if (( events[i].events & EPOLLERR) ||
           (events[i].events & EPOLLHUP)) {
-        /* An error has occured on this fd, or the socket is not
-           ready for reading(why were we notified then?) */
         fprintf(stderr, "epoll error\n");
         close(events[i].data.fd);
         continue;
