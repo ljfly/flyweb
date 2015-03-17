@@ -1,25 +1,4 @@
 #include "flyweb.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <netdb.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <time.h>
-#include <langinfo.h>
-#include <locale.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/epoll.h>
-#include <sys/stat.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <sys/sendfile.h>
-
-
-
 
 static process processes[MAX_PORCESS];
 
@@ -83,8 +62,7 @@ process* accept_sock(int listen_sock) {
       if (infd == -1) {
         if (( errno == EAGAIN) ||
             (errno == EWOULDBLOCK)) {
-          /* We have processed all incoming
-             connections. */
+          /* We have processed all incoming connections. */
           break;
         } else {
           perror("accept");
@@ -101,8 +79,6 @@ process* accept_sock(int listen_sock) {
     if (infd == -1) {
       if (( errno == EAGAIN) ||
           (errno == EWOULDBLOCK)) {
-        /* We have processed all incoming
-           connections. */
         break;
       } else {
         perror("accept");
@@ -114,11 +90,14 @@ process* accept_sock(int listen_sock) {
                 hbuf, sizeof hbuf,
                 sbuf, sizeof sbuf,
                 NI_NUMERICHOST | NI_NUMERICSERV);
-    /* Make the incoming socket non-blocking and add it to the
-       list of fds to monitor. */
+    /* Make the incoming socket non-blocking and add it to the list of fds to monitor. */
     s = setNonblocking(infd);
     if (s == -1)
       abort();
+  /* 开启套接字的tcp_cork选项，它是一种加强的nagle算法，过程和nagle算法类似，
+    都是累计数据然后发送。但它没有 nagle中1的限制，所以，在设置
+    cork后，即使所有ack都已经收到，但我还是不想发送数据，我还
+    想继续等待应用层更多的数据，所以它的效果比nagle更好 */
     int on = 1;
     setsockopt(infd, SOL_TCP, TCP_CORK, &on, sizeof(on));
     // 添加监视 sock 的读取状态
@@ -139,7 +118,7 @@ process* accept_sock(int listen_sock) {
   return NULL;
 }
 
-// 根据目录名自动添加 index.htm
+// 根据目录名自动添加 index.html
 int get_index_file(char *filename_buf, struct stat *pstat) {
   struct stat stat_buf;
   int s;
@@ -170,7 +149,8 @@ int get_index_file(char *filename_buf, struct stat *pstat) {
 }
 
 void read_request(process* process) {
-  int sock = process->sock, s;
+  int sock = process->sock;
+  int s;
   char* buf = process->buf;
   char read_complete = 0;
 
@@ -196,7 +176,7 @@ void read_request(process* process) {
   }
 
   int header_length = process->read_pos;
-  // determine whether the request is complete
+  // 判断请求是否完成
   if (header_length > process->kBufferSize - 1) {
     process->response_code = 400;
     process->status = STATUS_SEND_RESPONSE_HEADER;
@@ -211,7 +191,7 @@ void read_request(process* process) {
   if (read_complete) {
     // 重置读取位置
     reset_process(process);
-    // get GET info
+    // 获取get信息
     if (!strncmp(buf, "GET", 3) == 0) {
       process->response_code = 400;
       process->status = STATUS_SEND_RESPONSE_HEADER;
@@ -220,7 +200,7 @@ void read_request(process* process) {
       handle_error(processes, "bad request");
       return;
     }
-    // get first line
+    // 得到第一行
     const char *n_loc = strchr(buf, '\n');
     const char *space_loc = strchr(buf + 4, ' ');
     if (n_loc <= space_loc) {
