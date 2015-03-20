@@ -549,13 +549,6 @@ static int create_and_bind(char *port) {
   return listen_sock;
 }
 
-void init_processes() {
-  int i = 0;
-  for (;i < MAX_PORCESS; i ++) {
-    processes[i].sock = NO_SOCK;
-  }
-}
-
 void sighandler(int sig) {
   exit(0);
 }
@@ -573,8 +566,9 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
-  init_processes();
-
+  for (int i = 0;i < MAX_PORCESS; i ++) {
+    processes[i].sock = NO_SOCK;
+  }
   listen_sock = create_and_bind(argv[1]);
   doc_root = argv[2];
   if (listen_sock == -1)
@@ -634,4 +628,3 @@ int main(int argc, char *argv[]) {
   return EXIT_SUCCESS;
 }
 
->>>>>>> 60527981e5c99b6fa2d4a766d42a87e40daa15a5
