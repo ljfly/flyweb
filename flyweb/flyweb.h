@@ -133,6 +133,4 @@ void not_found(process* process){
       
 }
 
-void sighandler(int sig) {
-  exit(0);
-}
+
