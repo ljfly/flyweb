@@ -44,20 +44,17 @@ process* accept_sock(int listen_sock) {
       }
     }
 
-    getnameinfo(&in_addr, in_len,   hbuf, sizeof hbuf,  sbuf, sizeof sbuf,  NI_NUMERICHOST | NI_NUMERICSERV);
-    s = setNonblocking(infd);
-    if (s == -1)
+  if( set_nonblocking(infd) == -1)
       abort();
   /* 开启套接字的tcp_cork选项，它是一种加强的nagle算法，过程和nagle算法类似， 都是累计数据然后发送。
-  但它没有 nagle中1的限制，所以，在设置cork后，即使所有ack都已经收到，但我还是不想发送数据，我还
+  但它没有 nagle中1的限制，即使所有ack都已经收到，但我还是不想发送数据，我还
   想继续等待应用层更多的数据，所以它的效果比nagle更好 */
     int on = 1;
     setsockopt(infd, SOL_TCP, TCP_CORK, &on, sizeof(on));
     // 添加监视 sock 的读取状态
     event.data.fd = infd;
     event.events = EPOLLIN | EPOLLET;
-    s = epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event);
-    if (s == -1) {
+    if( epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event) == -1) {
       perror("epoll_ctl");
       abort();
     }
@@ -75,8 +72,7 @@ process* accept_sock(int listen_sock) {
 int get_index_file(char *filename_buf, struct stat *pstat) {
   struct stat stat_buf;
   int s;
-  s = lstat(filename_buf, &stat_buf);
-  if (s == -1) {
+  if( lstat(filename_buf, &stat_buf) == -1) {
     // 文件或目录不存在
     return -1;
   }
@@ -146,32 +142,20 @@ void read_request(process* process) {
     reset_process(process);
     // 获取get信息
     if (!strncmp(buf, "GET", 3) == 0) {
-      process->response_code = 400;
-      process->status = STATUS_SEND_RESPONSE_HEADER;
-      strncpy(process->buf,  header_400, sizeof(header_400));
-      send_response_header(process);
-      handle_error(processes, "bad request");
+      bad_request(process);
       return;
     }
     // 得到第一行
     const char *n_loc = strchr(buf, '\n');
     const char *space_loc = strchr(buf + 4, ' ');
     if (n_loc <= space_loc) {
-      process->response_code = 400;
-      process->status = STATUS_SEND_RESPONSE_HEADER;
-      strncpy(process->buf,  header_400, sizeof(header_400));
-      send_response_header(process);
-      handle_error(processes, "bad request");
+        bad_request(process);
       return;
     }
     char path[255];
     int len = space_loc - buf - 4;
     if (len > MAX_URL_LENGTH) {
-      process->response_code = 400;
-      process->status = STATUS_SEND_RESPONSE_HEADER;
-      strncpy(process->buf,  header_400, sizeof(header_400));
-      send_response_header(process);
-      handle_error(processes, "bad request");
+      bad_request(process);
       return;
     }
     buf[header_length] = 0;
@@ -185,11 +169,7 @@ void read_request(process* process) {
     strncpy(fullname + strlen(prefix), path, strlen(path) + 1);
     s = get_index_file(fullname, &filestat);
     if (s == -1) {
-      process->response_code = 404;
-      process->status = STATUS_SEND_RESPONSE_HEADER;
-      strncpy(process->buf, header_404, sizeof(header_404));
-      send_response_header(process);
-      handle_error(processes, "not found");
+      not_found( process);
       return;
     }
 
@@ -197,11 +177,7 @@ void read_request(process* process) {
 
     process->fd = fd;
     if (fd < 0) {
-      process->response_code = 404;
-      process->status = STATUS_SEND_RESPONSE_HEADER;
-      strncpy(process->buf,  header_404, sizeof(header_404));
-      send_response_header(process);
-      handle_error(processes, "not found");
+      not_found( process);
       return;
     } else {
       process->response_code = 200;
@@ -422,8 +398,7 @@ void cleanup(process *process) {
     }
   }
   if (process->fd != -1) {
-    s = close(process->fd);
-    if (s == NO_FILE) {
+    if( close(process->fd) == NO_FILE) {
       printf("fd: %d\n", process->fd);
       printf("\n");
       perror("close file");
@@ -457,80 +432,47 @@ void handle_request(int sock) {
 }
 
 static int create_and_bind(char *port) {
-  addrinfo hints;
-  addrinfo *result, *rp;
-  int s, listen_sock;
+  int s, listen_sock;  
 
-  memset(&hints, 0, sizeof(addrinfo));
-  hints.ai_family = AF_UNSPEC;    
-  hints.ai_socktype = SOCK_STREAM; /* TCP socket */
-  hints.ai_flags = AI_PASSIVE;  
+struct sockaddr_in server_addr;
+struct sockaddr_in client_addr;
+socklen_t   addrlen;
 
-  s = getaddrinfo(NULL, port, &hints, &result);
-  if (s != 0) {
-    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
-    return -1;
+listen_sock = socket(AF_INET, SOCK_STREAM,0);
+
+ if( set_nonblocking(listen_sock) == -1)
+    abort();
+
+bzero(&server_addr, sizeof(server_addr));
+server_addr.sin_family = AF_INET;
+server_addr.sin_port = htons(atoi(port));
+server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+bind(listen_sock,(struct sockaddr*)&server_addr, sizeof(server_addr));
+
+if( listen(listen_sock, SOMAXCONN) == -1){
+    perror("listen");
+    abort();
   }
-
-  for (rp = result; rp != NULL; rp = rp->ai_next) {
-    listen_sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-    int opt = 1;
-    setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    if (listen_sock == -1)
-      continue;
-
-    s = bind(listen_sock, rp->ai_addr, rp->ai_addrlen);
-    if (s == 0) {
-      break;
-    }
-
-    close(listen_sock);
-  }
-
-  if (rp == NULL) {
-    fprintf(stderr, "Could not bind\n");
-    return -1;
-  }
-
-  freeaddrinfo(result);
-
   return listen_sock;
-}
 
-void sighandler(int sig) {
-  exit(0);
 }
 
 int main(int argc, char *argv[]) {
   int s;
   epoll_event *events;
 
-  signal(SIGABRT, &sighandler);
-  signal(SIGTERM, &sighandler);
-  signal(SIGINT, &sighandler);
-
   if (argc != 3) {
     fprintf(stderr, "Usage: %s [port] [doc root]\n", argv[0]);
     exit(EXIT_FAILURE);
   }
-
+  doc_root = argv[2];
   for (int i = 0;i < MAX_PORCESS; i ++) {
     processes[i].sock = NO_SOCK;
   }
   listen_sock = create_and_bind(argv[1]);
-  doc_root = argv[2];
   if (listen_sock == -1)
     abort();
-
-  s = setNonblocking(listen_sock);
-  if (s == -1)
-    abort();
-
-  s = listen(listen_sock, SOMAXCONN);
-  if (s == -1) {
-    perror("listen");
-    abort();
-  }
 
   efd = epoll_create1(0);
   if (efd == -1) {
@@ -540,31 +482,25 @@ int main(int argc, char *argv[]) {
 
   event.data.fd = listen_sock;
   event.events = EPOLLIN | EPOLLET;
-  s = epoll_ctl(efd, EPOLL_CTL_ADD, listen_sock, &event);
-  if (s == -1) {
+   if( epoll_ctl(efd, EPOLL_CTL_ADD, listen_sock, &event) == -1) {
     perror("epoll_ctl");
     abort();
   }
-
   /* Buffer where events are returned */
   events = new epoll_event[MAXEVENTS];
 
-  /* The event loop */
   while (1) {
-    int n, i;
-
-    n = epoll_wait(efd, events, MAXEVENTS, -1);
+  int n = epoll_wait(efd, events, MAXEVENTS, -1);
     if (n == -1) {
       perror("epoll_wait");
     }
-    for (i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++) {
       if (( events[i].events & EPOLLERR) ||
           (events[i].events & EPOLLHUP)) {
         fprintf(stderr, "epoll error\n");
         close(events[i].data.fd);
         continue;
       }
-
       handle_request(events[i].data.fd);
     }
   }
@@ -573,4 +509,3 @@ int main(int argc, char *argv[]) {
   close(listen_sock);
   return EXIT_SUCCESS;
 }
-

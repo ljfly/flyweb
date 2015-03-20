@@ -48,7 +48,7 @@
 
 #define HEADER_IF_MODIFIED_SINCE "If-Modified-Since: "
 
-#define copy_str(dst, src) strncpy(dst, src, strlen(src) + 1)
+#define copy_str(dst, src)  strncpy(dst, src, strlen(src) + 1)
 #define write_to_header(string_to_write) copy_str(process->buf + strlen(process->buf), string_to_write)
 
 struct process {
@@ -79,22 +79,12 @@ void cleanup(process *process);
 int open_file(char *filename);
 
 
-int setNonblocking(int fd) {
+int set_nonblocking(int fd) {
   int flags;
   if (-1 ==(flags = fcntl(fd, F_GETFL, 0)))
     flags = 0;
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
-
-/*process* find_process_by_sock_slow(int sock) {
-  int i;
-  for (i = 0; i < MAX_PORCESS; i++) {
-    if (processes[i].sock == sock) {
-      return &processes[i];
-    }
-  }
-  return 0;
-}*/
 
 process* find_empty_process_for_sock(int sock) {
   if (sock < MAX_PORCESS && sock >= 0 && processes[sock].sock == NO_SOCK) {
@@ -121,9 +111,28 @@ void reset_process(process* process) {
   process->write_pos = 0;
 }
 
-
-
 void handle_error(process* process, const char* error_string) {
   cleanup(process);
   perror(error_string);
+}
+
+void bad_request(process* process){
+        process->response_code = 400;
+      process->status = STATUS_SEND_RESPONSE_HEADER;
+      strncpy(process->buf,  header_400, sizeof(header_400));
+      send_response_header(process);
+      handle_error(processes, "bad request");
+}
+
+void not_found(process* process){
+      process->response_code = 404;
+      process->status = STATUS_SEND_RESPONSE_HEADER;
+      strncpy(process->buf, header_404, sizeof(header_404));
+      send_response_header(process);
+      handle_error(processes, "not found");
+      
+}
+
+void sighandler(int sig) {
+  exit(0);
 }
