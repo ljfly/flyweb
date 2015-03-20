@@ -1,52 +1,10 @@
 #include "flyweb.h"
 
-static process processes[MAX_PORCESS];
-
 static int listen_sock;
 static int efd;
 static epoll_event event;
 static char *doc_root;
 static int current_total_processes;
-
-int setNonblocking(int fd) {
-  int flags;
-  if (-1 ==(flags = fcntl(fd, F_GETFL, 0)))
-    flags = 0;
-  return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
-
-// 遍历查找，慢
-process* find_process_by_sock_slow(int sock) {
-  int i;
-  for (i = 0; i < MAX_PORCESS; i++) {
-    if (processes[i].sock == sock) {
-      return &processes[i];
-    }
-  }
-  return 0;
-}
-
-process* find_empty_process_for_sock(int sock) {
-  if (sock < MAX_PORCESS && sock >= 0 && processes[sock].sock == NO_SOCK) {
-    return &processes[sock];
-  } else {
-    return find_process_by_sock_slow(NO_SOCK);
-  }
-}
-
-process* find_process_by_sock(int sock) {
-  if (sock < MAX_PORCESS && sock >= 0 && processes[sock].sock == sock) {
-    return &processes[sock];
-  } else {
-    return find_process_by_sock_slow(sock);
-  }
-}
-
-void reset_process(process* process) {
-  process->read_pos = 0;
-  process->write_pos = 0;
-}
-
 
 process* accept_sock(int listen_sock) {
   int s;
@@ -86,17 +44,13 @@ process* accept_sock(int listen_sock) {
       }
     }
 
-    getnameinfo(&in_addr, in_len,
-                hbuf, sizeof hbuf,
-                sbuf, sizeof sbuf,
-                NI_NUMERICHOST | NI_NUMERICSERV);
+    getnameinfo(&in_addr, in_len,   hbuf, sizeof hbuf,  sbuf, sizeof sbuf,  NI_NUMERICHOST | NI_NUMERICSERV);
     s = setNonblocking(infd);
     if (s == -1)
       abort();
-  /* 开启套接字的tcp_cork选项，它是一种加强的nagle算法，过程和nagle算法类似，
-    都是累计数据然后发送。但它没有 nagle中1的限制，所以，在设置
-    cork后，即使所有ack都已经收到，但我还是不想发送数据，我还
-    想继续等待应用层更多的数据，所以它的效果比nagle更好 */
+  /* 开启套接字的tcp_cork选项，它是一种加强的nagle算法，过程和nagle算法类似， 都是累计数据然后发送。
+  但它没有 nagle中1的限制，所以，在设置cork后，即使所有ack都已经收到，但我还是不想发送数据，我还
+  想继续等待应用层更多的数据，所以它的效果比nagle更好 */
     int on = 1;
     setsockopt(infd, SOL_TCP, TCP_CORK, &on, sizeof(on));
     // 添加监视 sock 的读取状态
@@ -127,7 +81,7 @@ int get_index_file(char *filename_buf, struct stat *pstat) {
     return -1;
   }
   if (S_ISDIR(stat_buf.st_mode)) {
-    // 是目录，追加 index.htm(l)
+    // 是目录，追加 index.html
     strncpy(filename_buf + strlen(filename_buf), INDEX_FILE, sizeof(INDEX_FILE));
     // 再次判断是否是文件
     s = lstat(filename_buf, &stat_buf);
@@ -479,12 +433,6 @@ void cleanup(process *process) {
   reset_process(process);
 }
 
-void handle_error(process* process, const char* error_string) {
-  cleanup(process);
-  perror(error_string);
-}
-
-
 void handle_request(int sock) {
   if (sock == listen_sock) {
     accept_sock(sock);
@@ -622,9 +570,7 @@ int main(int argc, char *argv[]) {
   }
 
   free(events);
-
   close(listen_sock);
-
   return EXIT_SUCCESS;
 }
 
