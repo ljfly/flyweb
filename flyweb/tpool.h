@@ -3,11 +3,12 @@
 #define THREAD_POOL_H__
 
 #include <pthread.h>
+#include "flyweb.h"
 
 /* 任务结点 */
 typedef struct tpool_work {
     void*               (*routine)(void*);       /* 任务函数 */
-    void                *arg;                    /* 传入任务函数的参数 */
+    process                *arg;                    /* 传入任务函数的参数 */
     struct tpool_work   *next;
 }tpool_work_t;
 
@@ -29,6 +30,6 @@ int tpool_create(int max_thr_num);
 void tpool_destroy();
 
 /* 向线程池中添加任务 */
-int tpool_add_work(void*(*routine)(void*), void *arg);
+int tpool_add_work(void*(*routine)(void*), process *arg);
 
 #endif
