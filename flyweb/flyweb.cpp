@@ -1,5 +1,5 @@
 #include "flyweb.h"
-
+#include "tpool.h"
 static int listen_sock;
 static int efd;
 static epoll_event event;
@@ -410,19 +410,23 @@ void cleanup(process *process) {
 
 void handle_request(int sock) {
   if (sock == listen_sock) {
-    accept_sock(sock);
+    tpool_add_work(accept_sock, &sock);
+   // accept_sock(sock);
   } else {
     process* process = find_process_by_sock(sock);
     if (process != 0) {
       switch (process->status) {
         case STATUS_READ_REQUEST_HEADER:
-          read_request(process);
+       //   read_request(process);
+        tpool_add_work(read_request, (void*)&process);
           break;
         case STATUS_SEND_RESPONSE_HEADER:
-          send_response_header(process);
+         // send_response_header(process);
+        tpool_add_work(send_response_header, (void*)&process);
           break;
         case STATUS_SEND_RESPONSE:
-          send_response(process);
+         // send_response(process);
+        tpool_add_work(send_response, (void*)&process);
           break;
         default:
           break;
@@ -431,12 +435,11 @@ void handle_request(int sock) {
   }
 }
 
-static int create_and_bind(char *port) {
-  int s, listen_sock;  
-
+static int create_bind_listen(char *port) {
+int        s,     listen_sock;  
 struct sockaddr_in server_addr;
 struct sockaddr_in client_addr;
-socklen_t   addrlen;
+socklen_t          addrlen;
 
 listen_sock = socket(AF_INET, SOCK_STREAM,0);
 
@@ -455,7 +458,6 @@ if( listen(listen_sock, SOMAXCONN) == -1){
     abort();
   }
   return listen_sock;
-
 }
 
 int main(int argc, char *argv[]) {
@@ -467,10 +469,16 @@ int main(int argc, char *argv[]) {
     exit(EXIT_FAILURE);
   }
   doc_root = argv[2];
+
+  if (tpool_create(MAX_PTHREAD) != 0) {
+        printf("tpool_create failed\n");
+        exit(-1);
+    }
+
   for (int i = 0;i < MAX_PORCESS; i ++) {
     processes[i].sock = NO_SOCK;
   }
-  listen_sock = create_and_bind(argv[1]);
+  listen_sock = create_bind_listen(argv[1]);
   if (listen_sock == -1)
     abort();
 

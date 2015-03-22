@@ -19,6 +19,8 @@
 #define USE_SENDFILE 1
 #define USE_TCP_CORK 1
 
+#define MAX_PTHREAD 8
+
 #define MAXEVENTS 10240
 #define MAX_PORCESS 10240
 #define MAX_URL_LENGTH 256
