@@ -30,5 +30,7 @@ void pool_init(int max_thread_num);
 int pool_destroy ();
 static CThread_pool *pool = NULL;
 
+#define MAX_PTHREAD  5
+
 
 #endif

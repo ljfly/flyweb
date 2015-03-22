@@ -1,5 +1,5 @@
 #include "flyweb.h"
-#include "tpool.h"
+#include "threadpool.h"
 static int listen_sock;
 static int efd;
 static epoll_event event;
@@ -410,23 +410,23 @@ void cleanup(process *process) {
 
 void handle_request(int sock) {
   if (sock == listen_sock) {
-    tpool_add_work(accept_sock, &sock);
-   // accept_sock(sock);
+  //  pool_add_worker(accept_sock, &sock);
+    accept_sock(sock);
   } else {
     process* process = find_process_by_sock(sock);
     if (process != 0) {
       switch (process->status) {
         case STATUS_READ_REQUEST_HEADER:
        //   read_request(process);
-        tpool_add_work(read_request, (void*)&process);
+        pool_add_worker(read_request, (void*)process);
           break;
         case STATUS_SEND_RESPONSE_HEADER:
          // send_response_header(process);
-        tpool_add_work(send_response_header, (void*)&process);
+        pool_add_worker(send_response_header, (void*)process);
           break;
         case STATUS_SEND_RESPONSE:
          // send_response(process);
-        tpool_add_work(send_response, (void*)&process);
+        pool_add_worker(send_response, (void*)process);
           break;
         default:
           break;
@@ -470,11 +470,7 @@ int main(int argc, char *argv[]) {
   }
   doc_root = argv[2];
 
-  if (tpool_create(MAX_PTHREAD) != 0) {
-        printf("tpool_create failed\n");
-        exit(-1);
-    }
-
+  pool_init(MAX_PTHREAD) ;
   for (int i = 0;i < MAX_PORCESS; i ++) {
     processes[i].sock = NO_SOCK;
   }
@@ -515,5 +511,6 @@ int main(int argc, char *argv[]) {
 
   free(events);
   close(listen_sock);
+  pool_destroy();
   return EXIT_SUCCESS;
 }
