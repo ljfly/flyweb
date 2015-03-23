@@ -5,29 +5,6 @@
 #include <pthread.h>
 #include <assert.h>
 
-typedef struct worker {
-    void *(*routine) (void *arg);
-    void *arg;
-    struct worker *next;
-} CThread_worker;
-
-typedef struct 
-{
-   pthread_mutex_t queue_lock;
-   pthread_cond_t queue_ready;
-
-   CThread_worker *queue_head;
-   int shutdown;
-   pthread_t *threadid;
-
-   int max_thread_num;
-   int cur_queue_size;
-} CThread_pool;
-
-int pool_add_worker (void*(*routine) (void *arg), void *arg);
-void *thread_routine (void *arg);
-
-static CThread_pool *pool = NULL;
 void pool_init(int max_thread_num) {
     pool = (CThread_pool *) malloc (sizeof (CThread_pool));
     pthread_mutex_init (&(pool->queue_lock),NULL);
@@ -111,26 +88,4 @@ int pool_destroy (){
         }
         pthread_exit(NULL);
     }
-  /*  void *myroutine(void*arg){
-        printf("threadid is 0x%x,working on task %d\n",pthread_self(),*(int*)arg);
-        sleep(1);
-        return NULL;
-    }
-    
-  int main(int argc, char *argv[]){
-    int threadnum, tacknum;
-    printf("Please enter the count of thread and the number of tack\n");
-    scanf("%d%d",&threadnum,&tacknum);
-    pool_init(threadnum);
-    int *workingnum = (int*)malloc(sizeof(int)*tacknum);
-    int i;
-    for(i = 0; i < tacknum; i++){
-    	workingnum[i] = i;
-    	pool_add_worker(myroutine,&workingnum[i]);
-    }
-    sleep(5);
-    pool_destroy();
-    free(workingnum);
-    return 0;
-  }
-*/
+  
