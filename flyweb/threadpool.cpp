@@ -26,6 +26,7 @@ int pool_add_worker(void *(*routine) (void *arg), void *arg){
     newworker->arg = arg;
     newworker->next;
     pthread_mutex_lock (&(pool->queue_lock));
+    /*将任务加入到等待队列中*/
     CThread_worker *member = pool->queue_head;
     if(member != NULL) {
         while(member->next != NULL)
@@ -36,6 +37,7 @@ int pool_add_worker(void *(*routine) (void *arg), void *arg){
         pool->queue_head = newworker;
     assert(pool->queue_head != NULL);
     pool->cur_queue_size++;
+    /*等待队列中有任务了，唤醒一个等待线程.*/
     pthread_mutex_unlock(&(pool->queue_lock));
     pthread_cond_signal(&(pool->queue_ready));
     return 0;
@@ -44,11 +46,13 @@ int pool_destroy (){
     if(pool->shutdown)
         return -1;
     pool->shutdown = 1;
+    /*唤醒所有等待线程*/
     pthread_cond_broadcast(&(pool->queue_ready));
     int i;
     for(i = 0; i < pool->max_thread_num; i++)
         pthread_join(pool->threadid[i],NULL);
     free (pool->threadid);
+    /*销毁等待队列*/
     CThread_worker *head = NULL;
     while(pool->queue_head != NULL) {
         head = pool->queue_head;
@@ -65,11 +69,12 @@ int pool_destroy (){
         printf("startting thread 0x%x\n", pthread_self());
         while(1){
             pthread_mutex_lock(&(pool->queue_lock));
-
+            /*如果等待队列为0并且不销毁线程池，则处于阻塞状态*/
             while(pool->cur_queue_size == 0 && !pool->shutdown){
                 printf("thread 0x%x is waitting\n", pthread_self());
                 pthread_cond_wait(&(pool->queue_ready),&(pool->queue_lock));
             }
+            /*销毁线程池*/
             if(pool->shutdown){
                 pthread_mutex_unlock(&(pool->queue_lock));
                 printf("thread 0x%x will exit\n", pthread_self());
@@ -78,10 +83,12 @@ int pool_destroy (){
             printf("thread 0x%x is starting to work\n", pthread_self());
             assert(pool->cur_queue_size != 0);
             assert(pool->queue_head != NULL);
+            /*等待队列长度减去1，并取出链表中的头元素*/
             pool->cur_queue_size--;
             CThread_worker *worker = pool->queue_head;
             pool->queue_head = worker->next;
             pthread_mutex_unlock(&(pool->queue_lock));
+            /*调用回调函数，执行任务*/
             (*(worker->routine)) (worker->arg);
             free(worker);
             worker = NULL;
