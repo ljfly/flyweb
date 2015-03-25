@@ -4,7 +4,7 @@
 #include <sys/types.h>
 #include <pthread.h>
 #include <assert.h>
-
+#include "threadpool.h"
 void pool_init(int max_thread_num) {
     pool = (CThread_pool *) malloc (sizeof (CThread_pool));
     pthread_mutex_init (&(pool->queue_lock),NULL);
@@ -24,7 +24,7 @@ int pool_add_worker(void *(*routine) (void *arg), void *arg){
     CThread_worker *newworker = (CThread_worker *) malloc (sizeof (CThread_worker));
     newworker->routine = routine;
     newworker->arg = arg;
-    newworker->next;
+    newworker->next = NULL;
     pthread_mutex_lock (&(pool->queue_lock));
     /*将任务加入到等待队列中*/
     CThread_worker *member = pool->queue_head;
