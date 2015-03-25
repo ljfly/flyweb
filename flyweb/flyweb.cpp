@@ -28,15 +28,13 @@ process* accept_sock(int listen_sock) {
         }
       }
       close(infd);
-
       return NULL;
     }
 
     in_len = sizeof in_addr;
     infd = accept(listen_sock, &in_addr, &in_len);
     if (infd == -1) {
-      if (( errno == EAGAIN) ||
-          (errno == EWOULDBLOCK)) {
+      if (( errno == EAGAIN) || (errno == EWOULDBLOCK)) {
         break;
       } else {
         perror("accept");
@@ -47,8 +45,8 @@ process* accept_sock(int listen_sock) {
   if( set_nonblocking(infd) == -1)
       abort();
   /* 开启套接字的tcp_cork选项，它是一种加强的nagle算法，过程和nagle算法类似， 都是累计数据然后发送。
-  但它没有 nagle中1的限制，即使所有ack都已经收到，但我还是不想发送数据，我还
-  想继续等待应用层更多的数据，所以它的效果比nagle更好 */
+  但它没有 nagle中1的限制，即使所有ack都已经收到，但我还是不想发送数据，我还想继续等待应用层更多的
+  数据，所以它的效果比nagle更好 */
     int on = 1;
     setsockopt(infd, SOL_TCP, TCP_CORK, &on, sizeof(on));
     // 添加监视 sock 的读取状态
@@ -60,7 +58,8 @@ process* accept_sock(int listen_sock) {
     }
     process* process = find_empty_process_for_sock(infd);
     current_total_processes++;
-    reset_process(process);
+    process->read_pos = 0;
+    process->write_pos = 0;
     process->sock = infd;
     process->fd = NO_FILE;
     process->status = STATUS_READ_REQUEST_HEADER;
@@ -127,11 +126,7 @@ void read_request(process* process) {
   int header_length = process->read_pos;
   // 判断请求是否完成
   if (header_length > process->kBufferSize - 1) {
-    process->response_code = 400;
-    process->status = STATUS_SEND_RESPONSE_HEADER;
-    strncpy(process->buf, header_400, sizeof(header_400));
-    send_response_header(process);
-    handle_error(processes, "bad request");
+    bad_request(process);
     return;
   }
   buf[header_length]=0;
@@ -139,7 +134,8 @@ void read_request(process* process) {
 
   if (read_complete) {
     // 重置读取位置
-    reset_process(process);
+      process->read_pos = 0;
+      process->write_pos = 0;
     // 获取get信息
     if (!strncmp(buf, "GET", 3) == 0) {
       bad_request(process);
@@ -174,7 +170,6 @@ void read_request(process* process) {
     }
 
     int fd = open(fullname, O_RDONLY);
-
     process->fd = fd;
     if (fd < 0) {
       not_found( process);
@@ -184,7 +179,6 @@ void read_request(process* process) {
     }
 
     char tempstring[256];
-
     // 检查有无 If-Modified-Since，返回 304
     char* c = strstr(buf, HEADER_IF_MODIFIED_SINCE);
     if (c != 0) {
@@ -192,11 +186,7 @@ void read_request(process* process) {
       if (rn == 0) {
         rn = strchr(c, '\n');
         if (rn == 0) {
-          process->response_code = 400;
-          process->status = STATUS_SEND_RESPONSE_HEADER;
-          strncpy(process->buf,  header_400, sizeof(header_400));
-          send_response_header(process);
-          handle_error(processes, "bad request");
+          bad_request(process);
           return;
         }
       }
@@ -289,6 +279,30 @@ int write_all(process *process, char* buf, int n) {
   return total_bytes_write;
 }
 
+
+void cleanup(process *process) {
+  int s;
+  if (process->sock != NO_SOCK) {
+#ifdef USE_TCP_CORK
+    int on = 0;
+    setsockopt(process->sock, SOL_TCP, TCP_CORK, &on, sizeof(on));
+#endif
+    s = close(process->sock);
+    current_total_processes--;
+    if (s == NO_SOCK) {
+      perror("close sock");
+    }
+  }
+  if (process->fd != -1) {
+    if( close(process->fd) == NO_FILE) {
+      printf("fd: %d\n", process->fd);
+      printf("\n");
+      perror("close file");
+    }
+  }
+  process->sock = NO_SOCK;
+  reset_process(process);
+}
 
 void send_response_header(process *process) {
 #ifdef USE_TCP_CORK
@@ -384,55 +398,8 @@ void send_response(process *process) {
 #endif
 }
 
-void cleanup(process *process) {
-  int s;
-  if (process->sock != NO_SOCK) {
-#ifdef USE_TCP_CORK
-    int on = 0;
-    setsockopt(process->sock, SOL_TCP, TCP_CORK, &on, sizeof(on));
-#endif
-    s = close(process->sock);
-    current_total_processes--;
-    if (s == NO_SOCK) {
-      perror("close sock");
-    }
-  }
-  if (process->fd != -1) {
-    if( close(process->fd) == NO_FILE) {
-      printf("fd: %d\n", process->fd);
-      printf("\n");
-      perror("close file");
-    }
-  }
-  process->sock = NO_SOCK;
-  reset_process(process);
-}
-
 void handle_request(int sock) {
-  if (sock == listen_sock) {
-  //  pool_add_worker(accept_sock, &sock);
-    accept_sock(sock);
-  } else {
-    process* process = find_process_by_sock(sock);
-    if (process != 0) {
-      switch (process->status) {
-        case STATUS_READ_REQUEST_HEADER:
-       //   read_request(process);
-        pool_add_worker(read_request, (void*)process);
-          break;
-        case STATUS_SEND_RESPONSE_HEADER:
-         // send_response_header(process);
-        pool_add_worker(send_response_header, (void*)process);
-          break;
-        case STATUS_SEND_RESPONSE:
-         // send_response(process);
-        pool_add_worker(send_response, (void*)process);
-          break;
-        default:
-          break;
-      }
-    }
-  }
+  
 }
 
 static int create_bind_listen(char *port) {
@@ -463,6 +430,10 @@ if( listen(listen_sock, SOMAXCONN) == -1){
 int main(int argc, char *argv[]) {
   int s;
   epoll_event *events;
+
+ signal(SIGABRT, &sighandler);
+signal(SIGTERM, &sighandler);
+signal(SIGINT, &sighandler);
 
   if (argc != 3) {
     fprintf(stderr, "Usage: %s [port] [doc root]\n", argv[0]);
@@ -505,7 +476,30 @@ int main(int argc, char *argv[]) {
         close(events[i].data.fd);
         continue;
       }
-      handle_request(events[i].data.fd);
+      if (events[i].data.fd == listen_sock) {
+    //  pool_add_worker(accept_sock, (void*)&sock);
+       accept_sock(events[i].data.fd);
+      } else {
+      process* process = find_process_by_sock(events[i].data.fd);
+      if (process != 0) {
+        switch (process->status) {
+          case STATUS_READ_REQUEST_HEADER:
+        //   read_request(process);
+        pool_add_worker(read_request, (void*)process);
+          break;
+        case STATUS_SEND_RESPONSE_HEADER:
+         // send_response_header(process);
+        pool_add_worker(send_response_header, (void*)process);
+          break;
+        case STATUS_SEND_RESPONSE:
+         // send_response(process);
+        pool_add_worker(send_response, (void*)process);
+          break;
+        default:
+          break;
+          }
+        }
+      }
     }
   }
 

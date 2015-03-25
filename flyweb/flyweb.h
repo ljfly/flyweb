@@ -1,3 +1,6 @@
+#ifndef FLY_WEB_H
+#define FLY_WEB_H 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -75,11 +78,10 @@ void send_response_header(process *process);
 
 void send_response(process *process);
 
-void cleanup(process *process);
-
 
 int open_file(char *filename);
 
+void cleanup(process *process);
 
 int set_nonblocking(int fd) {
   int flags;
@@ -132,7 +134,9 @@ void not_found(process* process){
       strncpy(process->buf, header_404, sizeof(header_404));
       send_response_header(process);
       handle_error(processes, "not found");
-      
 }
 
-
+void sighandler(int sig) {
+exit(0);
+}
+#endif
